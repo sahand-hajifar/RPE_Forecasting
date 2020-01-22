@@ -1,0 +1,316 @@
+---
+title: "RPE Forecasting"
+date:  "`r format(Sys.time(), '%B %d, %Y')`"
+author:
+  - name: "Sahand Hajifar ^[Email: sahandha@buffalo.edu]"
+    affiliation: Department of Industrial and Systems Engineering, University at Buffalo
+    
+  - name: "Hongyue Sun ^[Email: hongyues@buffalo.edu | Phone: +1-716-645-4715 | Website: <a href=\"http://engineering.buffalo.edu/industrial-systems/people/faculty-directory/sun-hongyue.html\">University at Buffalo Official</a> ]"
+    affiliation: Department of Industrial and Systems Engineering, University at Buffalo
+    
+  - name: "Fadel Megahed ^[Email: megahefm@miamioh.edu | Phone: +1-513-529-4185 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/megahefm\">Miami University Official</a> ]"
+    affiliation: Farmer School of Business, Miami University
+    
+  - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a> ]"
+    affiliation: Farmer School of Business, Miami University
+    
+  - name: "Lora Cavuoto ^[Email: loracavu@buffalo.edu | Phone: +1-716-645-4696 | Website: <a href=\"http://engineering.buffalo.edu/industrial-systems/people/faculty-directory/cavuoto-lora.html\">University at Buffalo Official</a> ]"
+    affiliation: Department of Industrial and Systems Engineering, University at Buffalo
+    
+bibliography: refs.bib
+link-citations: yes
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{chngpage}
+  - \usepackage{caption}
+  - \usepackage{chngpage}
+  - \usepackage{color}
+  - \usepackage[autostyle=true,english=american]{csquotes}
+  - \usepackage{csvsimple}
+  - \usepackage{framed}
+  - \usepackage{graphicx}
+  - \usepackage{hyperref}
+  - \usepackage{lineno}
+  - \usepackage{lscape}
+  - \usepackage{mathptmx}
+  - \usepackage{mathrsfs}
+  - \usepackage{makecell}
+  - \usepackage{mathtools}
+  - \usepackage{media9}
+  - \usepackage{multicol}
+  - \usepackage{multirow}
+  - \usepackage{secdot}
+  - \usepackage{sectsty}
+  - \usepackage{setspace}
+  - \usepackage{subcaption}
+  - \usepackage{tabulary}
+  - \usepackage{titlesec}
+  - \usepackage[colorinlistoftodos]{todonotes}
+  - \usepackage{url}
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    df_print: paged
+    code_folding: hide
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = TRUE,
+                      out.width = "100%",
+                      warning = FALSE,
+                      message = FALSE) 
+```
+
+---
+
+\newpage 
+
+In this paper we attempt to show how the stride data in @baghdadi2018machine and @baghdadimonitoring can be used to do conditional and unconditional forecasting of Rated Perceived Exertion (RPE) using univariate and multivariate time series methods. RPE forecasting is an important concern because it can help ergonomists with fatigue-related ergonomic interventions. We have extracted the stride data for their 15 participants using the following [GitHub repository](https://github.com/fmegahed/fatigue-changepoint/tree/master/Data/Raw). The reader should notice that the data was preprocessed by normalizing the length of the time series by percentile and then denoising by median filter. 
+Since these are not a main goal of our research, we do not include the preprocessing part here, and we directly use the preprocessed data in in @baghdadi2018machine and @baghdadimonitoring. Alternatively, the interested reader is adviced to see the supplementary Matlab files in their GitHub Repository in conjunction with this work.
+
+# R Initilization, Package Management and Customized Functions
+The code snippet below presents the **R** packages used in our analysis. Additionally, the reader should note that we have used R version 3.5.1 in our analysis. The analysis is performed on a 64-bit Windows Operating System, with Intel(R) Core(TM) i5-2410M CPU @ 2.30 GHz and 4.00 GB RAM.
+```{r error=FALSE, warning=FALSE, cache=FALSE, load_libraries, message=FALSE}
+rm(list = ls()) # clear global environment
+graphics.off() # close all graphics
+#p_load is equivalent to combining both install.packages() and library()
+pacman::p_load(bit, coda, data.table, devtools, forecast, grid,
+               gridExtra, knitr, mvtnorm, plotly, RColorBrewer, 
+               reshape2, R.matlab, tictoc, tidyverse, tsDyn, tseries)
+```
+
+
+# Read and Store the Data {.tabset .tabset-fade .tabset-pills}
+\label{sec: ETL}
+The stride data (stride length, stride height and stride duration) and RPE data are extracted from the mat files in @baghdadi2018machine and @baghdadimonitoring. The extracted data are multivariate time series with four variables (stride length, stride height, stride duration and RPE), and the length of the time series for each participant is 99 (from 1 percentile to 99 percentile). Different participants have the same time length, because walking time is rescaled from nominal time spent during walking to 0-100% scale (see @baghdadimonitoring for more details).  Moreover, notice that RPE is collected in a lower frequency compared to stride variables (6th,12th,...,96th percentiles) and its general changing pattern is nondecreasing. We use low-frequency observations which leaves us with 16 observations per participant. Please see the comments within the code chunk for more details. Also, the raw data for different participants are visualized in this section.
+
+```{r settings}
+N_sub = 15 #number of subjects
+N_var = 4 #number of variables
+lag_order = 1
+arima_dif = 1
+T_start = 6 #time of first low-frequency observation
+T_inc = 6 #time between two low-frequency observations
+T_end = 96 #time of last low-frequency observation
+LF_Range = 1:(T_end/T_inc) #time range for low-frequency data (1,2,...,16)
+LF_T_start = 1 #time of first observation in low-frequency time domain
+LF_F_start = 8 #the time at which the forecasting procedure starts (again in low-frequency time domain)
+LF_T_end = T_end/T_inc  #time of last observation in low-frequency time domain
+Sub_range = 1:N_sub #range of subjects
+n_ahead_range = 1:6 #range of k in k-ahead forecasting
+comb = expand.grid(Sub_range,n_ahead_range) #different combinations of subject number and k (in k-ahead forecasting)
+
+column_names = sprintf("Subject%s/%s_ahead",comb[,1],comb[,2])
+AR_Results = ARIMA_Results = VAR_Results = VECM_Results = matrix(data=NA,nrow=LF_T_end,ncol=dim(comb)[1])
+```
+
+```{r extract}
+  HF_Subject_Data <- sprintf("../Data_Subject/Data_%s.mat",seq(1:N_sub))%>% #High-frequency subject data
+  lapply(readMat) %>%
+  lapply(unlist) %>% 
+  lapply(matrix, ncol = N_var, byrow = FALSE,dimnames = NULL) %>% 
+  lapply(data.frame)
+  
+  Subject_Data <- HF_Subject_Data%>% #low-frequency subject data
+  lapply(slice, seq(T_start,T_end,by=T_inc))
+```
+
+```{r raw_plotting,echo=TRUE, results='asis'}
+for (num_subject in Sub_range)
+{
+  Raw_Data<-ts(data = HF_Subject_Data[[num_subject]], start = 1, end = dim(HF_Subject_Data[[num_subject]])[1], frequency = 1, names =c("Stride Length (ft.)","Stride Height (ft.)","Stride Duration (s)","RPE") )
+  cat(paste0("## Participant ",num_subject, " {-} \n"))
+  Plot = autoplot(Raw_Data,facets = T)+geom_point(shape=1)+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
+  print(Plot)
+  cat("\n \n")
+}
+
+```
+
+# RPE Forecasting
+In this section we do rolling forecasting for RPE. Suppose that we want to do a forecast at time $T$ (in the code we call this current time). If we do k-step ahead forecasting, we will get the forecast of RPE at time $T+k$. Implementing rolling forecast starts from $T=8$ and we analyze different values of $k$ $(k=1,..,6)$. We use two approaches for forecasting which are unconditional and conditional forecasting. In unconditional forecasting, the stride and RPE data are known for $t=1,..,T$ and we want to forecast RPE at time $T+k$. However, in conditional forecasting we also know the future path of stride data which means that stride data are known for $t=1,..,T+k$, RPE data are known for $t=1,..,T$ and we want to forecast RPE for time $t=T+k$. Autoregressive (AR) model, vector autoregression (VAR) model and vector error correction model (VECM) are used for unconditional forecasting and Markov-swithcing Bayesian vector autoregression (MSBVAR) is used for conditional forecasting. Since the RPE scale is 6-20, in cases that an RPE higher than 20 is forecasted we change it to 20.
+
+## AR Forecasting
+The equation for AR(p) model is as follows:
+$$y_t=\phi_0+\phi_1 y_{t-1}+\phi_2 y_{t-2}+...+\phi_p y_{t-p} +\epsilon_t $$
+,where $y_t$ represents a univariate time series (in our case it is RPE at time $t$), $\phi_i$ are coefficients, and $\epsilon_t$ is white noise ($\epsilon_t$ are usually assumed to be uncorrelated random variables in which $E(\epsilon_t)=0$ and $Var(\epsilon_t)=\sigma^2$) and unconditional forecasting is done in a recursive procedure. There are 16 observations and starting from $t=8$ RPE is continiously forecasted. Due to low number of observations, it is not possible to estimate the parameters in a VAR model with a lag order higher than 1. Therefore, to be consistent we used AR(1).
+```{r AR}
+    AR_Forecast <- function(num_subject,n_ahead) #this function uses AR(1) to do k-ahead forecasting for a subject
+    {AR_RPE <- matrix(data = NA,nrow = LF_T_end,ncol = 1)
+      for (cur_t in LF_F_start:(LF_T_end-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_ar <- Arima(Data_in[,N_var],order = c(lag_order, 0, 0))
+        AR_RPE[cur_t+n_ahead,] <- matrix(data = predict(mod_ar,n.ahead = n_ahead)[["pred"]][n_ahead],ncol = 1, byrow = FALSE,dimnames = NULL)
+      }, error = function(e) {})}
+    return(AR_RPE)}
+
+    AR_Results = mapply(AR_Forecast,comb[,1],comb[,2])
+    AR_Results [AR_Results>20] <- 20
+    colnames(AR_Results) =  column_names
+```
+We get RPEs forecasted by AR for $t=9,10,...,16$.
+
+## ARIMA Forecasting
+
+```{r ARIMA}
+    ARIMA_Forecast <- function(num_subject,n_ahead) 
+    {ARIMA_RPE <- matrix(data = NA,nrow = LF_T_end,ncol = 1)
+      for (cur_t in LF_F_start:(LF_T_end-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_arima <- Arima(Data_in[,N_var],order = c(lag_order, arima_dif, 0))
+        ARIMA_RPE[cur_t+n_ahead,] <- forecast(mod_arima, h = n_ahead)[["mean"]][n_ahead]
+      }, error = function(e) {})}
+    return(ARIMA_RPE)}
+
+    ARIMA_Results = mapply(ARIMA_Forecast,comb[,1],comb[,2])
+    ARIMA_Results [ARIMA_Results>20] <- 20
+    colnames(ARIMA_Results) =  column_names
+```
+
+## VAR Forecasting
+The equation for VAR model of order $p$ is as follows:
+$$\mathbf{y}_t=\mathbf{A}_1 \mathbf{y}_{t-1}+...+\mathbf{A}_p \mathbf{y}_{t-p}+\mathbf{w}_t$$
+
+
+Where $\mathbf{y}_t=(y_{1t},...,y_{Kt})$ is a $K\times 1$ random vector, the $\mathbf{A}_i$ are $K\times K$ coefficient matrices and $\mathbf{w}_t$ is a K-dimensional white noise. VAR(p) euqation can be used recursively to determine the k-step ahead forecasting (see @lutkepohl2005new):
+$$E_t(\mathbf{y}_{t+1})=\mathbf{A}_1 \mathbf{y}_t+...+\mathbf{A}_p \mathbf{y}_{t-p+1}$$
+$$E_t(\mathbf{y}_{t+2})=\mathbf{A}_1 E_t(\mathbf{y}_{t+1})+\mathbf{A}_2 \mathbf{y}_t+...+\mathbf{A}_p \mathbf{y}_{t-p+2}$$
+$$\ldots$$
+, using these recursions the k-step ahead forecasting can be performed.
+
+In our case $K=4$ (there are four variables) and we use VAR(1). As mentioned earlier, there are 16 observations $(\mathbf{y}_t \:, \: t=1,...,16)$, and starting from $t=8$, we continiously do forecasting for time horizon of $t=9,10,...,16$. tsDyn package (see @di2015package) is used to train VAR models.
+
+```{r VAR}
+    VAR_Forecast <- function(num_subject,n_ahead) #this function uses VAR(1) to do k-ahead forecasting for a subject
+    { VAR_RPE <- matrix(data = NA,nrow = LF_T_end,ncol = 1) 
+    for (cur_t in LF_F_start:(LF_T_end-n_ahead)){ 
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,] #Data_in is used to extract model
+        mod_var <- lineVar(Data_in, lag=lag_order) #extracting VAR(1) model
+        VAR_RPE[cur_t+n_ahead,]<- predict(mod_var,n.ahead = n_ahead)[n_ahead,N_var] #rolling forecasting
+      }, error = function(e) {})}
+    return(VAR_RPE)
+    }
+   VAR_Results = mapply(VAR_Forecast,comb[,1],comb[,2])
+   VAR_Results [VAR_Results>20] <- 20
+   colnames(VAR_Results) =  column_names
+```
+Now, we have RPEs forecasted by VAR for $t=9,10,...,16$.
+
+## VECM Forecasting
+Vector Error Correction Model (VECM) representation of VAR(p) model is as follows:
+$$\Delta \mathbf{y}_t=\boldsymbol{\nu}+\boldsymbol{\Pi} \mathbf{y}_{t-1}+\boldsymbol{\Gamma}_1 \Delta \mathbf{y}_{t-1}+\ldots+\boldsymbol{\Gamma}_{p-1} \Delta \mathbf{y}_{t-p+1}+\mathbf{w}_t $$
+Variables are defined as VAR model, $\boldsymbol{\nu}$ is the intercept and $\boldsymbol{\Pi}$ and $\boldsymbol{\Gamma}_i$ are coefficient matrices. Continious forecasting is done in a recursive procedure as mentioned in the VAR model. A VAR with 1 lag corresponds here with a VECM with 0 lag. tsDyn package (see @di2015package) is used to train VECM.
+```{r VECM}
+    VECM_Forecast <- function(num_subject,n_ahead) #this function uses VECM to do k-ahead forecasting for a subject
+    {VECM_RPE <- matrix(data = NA,nrow=LF_T_end,ncol = 1)
+    for (cur_t in LF_F_start:(LF_T_end-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_vecm <- VECM(Data_in, lag = lag_order-1)
+        VECM_RPE[cur_t+n_ahead,] <- predict(mod_vecm,n.ahead = n_ahead)[n_ahead,N_var]
+      }, error = function(e) {})}
+    return(VECM_RPE)
+    }
+    VECM_Results = mapply(VECM_Forecast,comb[,1],comb[,2])
+    VECM_Results [VECM_Results>20] <- 20
+    colnames(VECM_Results) =  column_names
+```
+We get RPEs forecasted by VECM for $t=9,10,...,16$.
+
+# RPE Forecasting Plots for Different Subjects {.tabset .tabset-fade .tabset-pills}
+In this section we plot forecasts that we got using different methods in conjunction with true RPEs. These plots are presented for different participants and $k$ values.
+
+```{r subject_plotting,echo=TRUE, results='asis',fig.height = 10, fig.width = 8}
+for (num_subject in Sub_range)
+{
+  cat(paste0("## Participant ",num_subject, " {-} \n"))
+  
+  F_Data = matrix(data = NA,nrow = LF_T_end*5*length(n_ahead_range),ncol = 4)
+  colnames(F_Data) = c("RPE","Time","k","Method")
+  AR = AR_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  VAR = VAR_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  VECM = VECM_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  ARIMA = ARIMA_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  True =  matrix(rep(Subject_Data[[num_subject]][,4],each=length(n_ahead_range)), ncol=length(n_ahead_range), byrow=TRUE)
+  F_Data[,1] = c(as.vector(AR),as.vector(VAR),as.vector(VECM),as.vector(ARIMA),as.vector(True))
+  F_Data[,2] = rep(1:LF_T_end,(dim(F_Data)[1])/LF_T_end)
+  F_Data[,3] = rep(c(rep("1-step ahead",LF_T_end),rep("2-step ahead",LF_T_end),rep("3-step ahead",LF_T_end),rep("4-step ahead",LF_T_end),rep("5-step ahead",LF_T_end),rep("6-step ahead",LF_T_end)),5)
+F_Data[,4] = c(rep("AR",length(n_ahead_range)*LF_T_end),rep("VAR",length(n_ahead_range)*LF_T_end),rep("VECM",length(n_ahead_range)*LF_T_end),rep("ARIMA",length(n_ahead_range)*LF_T_end),rep("True RPE",length(n_ahead_range)*LF_T_end))
+  F_Data2 = as.data.frame(F_Data,colnames=T)
+  F_Data2$RPE = as.numeric(as.character(F_Data2$RPE))
+  F_Data2$Time = as.numeric(as.character(F_Data2$Time))
+  
+ p = ggplot(data = F_Data2, mapping = aes(x = Time,y = RPE, color = Method))+scale_colour_manual(values = c("purple", "blue", "darkgrey","darkorange4","red"))+geom_line(aes(linetype = Method),size = 0.5)+scale_linetype_manual(values=c("twodash","longdash", "solid","dashed","dotdash"))+facet_wrap(vars(k))+ylim(6,20)+geom_point(aes(shape = Method),size = 1.5)+scale_shape_manual(values=c(1,3,20,4,8))+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5),legend.position="top")
+ print(p)
+  cat("\n \n")
+}
+```
+
+# MAE Results
+We compare the performance of different methods based on MAE box-plots and bar plots. We exclude Participant 2 and Participant 6 in the summary here, because in a few cases AR and VAR are not able to give prediction for these participants (one reason is that RPE of Participant 6 does not change from $t=1$ to $t=8$). Also, when number of observations is low and $k\leq4$ MSBVAR is not able to forecast the same number of upcoming observations as other methods. The reason is that this method generates some random vectors using inverse-Wishart distribution (containing four variables) and when $k$ and number of observations are low, the degree of freedom for Wishart distribution gets lower than number of variables, which makes it noninvertible. Therefore, we do not consider MSBVAR for $k\leq4$.
+
+```{r MAE_tables}
+Comb_Subject_Data = do.call(cbind, Subject_Data)
+True_RPE = Comb_Subject_Data [,seq(N_var,N_var*N_sub,N_var)]
+colnames(True_RPE) = sprintf("Subject %s",1:N_sub)
+Rep_True_RPE = do.call(cbind, replicate(length(n_ahead_range), True_RPE, simplify=FALSE))
+
+AR_abs_error = abs(Rep_True_RPE-AR_Results)
+AR_MAE = matrix(data = colMeans(AR_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+VAR_abs_error = abs(Rep_True_RPE-VAR_Results)
+VAR_MAE = matrix(data = colMeans(VAR_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+VECM_abs_error = abs(Rep_True_RPE-VECM_Results)
+VECM_MAE = matrix(data = colMeans(VECM_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+ARIMA_abs_error = abs(Rep_True_RPE-ARIMA_Results)
+ARIMA_MAE = matrix(data = colMeans(ARIMA_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+
+AR_MAE[,2] = VAR_MAE[,2] = VECM_MAE[,2] = ARIMA_MAE[,2] = NA #exclude subject 2 from results
+AR_MAE[,6] = VAR_MAE[,6] = VECM_MAE[,6] = ARIMA_MAE[,6] = NA #exclude subject 6 from results
+
+rownames(AR_MAE) = rownames(VAR_MAE) = rownames(VECM_MAE) = rownames(ARIMA_MAE) = sprintf("%s_ahead",n_ahead_range)
+colnames(AR_MAE) = colnames(VAR_MAE) = colnames(VECM_MAE) = colnames(ARIMA_MAE) = sprintf("Subject %s",Sub_range)
+```
+## MAE Box-plots {.tabset .tabset-fade .tabset-pills}
+```{r boxplot,echo=TRUE, results='asis'}
+for (n_ahead in n_ahead_range) {
+  cat(paste0("### ",n_ahead,"-ahead", " {-} \n"))
+  MAE <- c(AR_MAE[n_ahead,],VAR_MAE[n_ahead,],VECM_MAE[n_ahead,],ARIMA_MAE[n_ahead,])
+  Method <- c(rep("AR",N_sub),rep("VAR",N_sub),rep("VECM",N_sub),rep("ARIMA",N_sub))
+  df = data.frame(MAE,Method)
+  p <- ggplot(df, aes(x = Method, y = MAE))+geom_boxplot()+ggtitle(paste0(toString(n_ahead),"-step ahead"))+ theme(plot.title = element_text(hjust = 0.5))+theme_bw()+ theme(plot.title = element_text(hjust = 0.5))+ylim(0,5)
+  print(p)
+  cat("\n \n")
+}
+```
+## MAE Bar-plots {.tabset .tabset-fade .tabset-pills}
+```{r barplot,echo=TRUE, results='asis'}
+final_sub_range = c(1,3,4,5,7,8,9,10,11,12,13,14,15)
+for (num_subject in final_sub_range) {
+cat(paste0("### Participant ",num_subject, " {-} \n"))
+df = data.frame(MAE = c(AR_MAE[,num_subject],VAR_MAE[,num_subject],VECM_MAE[,num_subject],ARIMA_MAE[,num_subject]),k_step_ahead = rep(sprintf("%s_step ahead",n_ahead_range),4),Method = c(rep("AR",length(n_ahead_range)),rep("VAR",length(n_ahead_range)),rep("VECM",length(n_ahead_range)),rep("ARIMA",length(n_ahead_range))))
+p = ggplot(df, aes(Method, MAE)) + geom_col() + facet_wrap(~k_step_ahead,scales = "free")+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
+print(p)
+  cat("\n \n")
+}
+```
+# Save the Results
+This code-chunk saves the MAE and forecast results.
+```{r save_results}
+save(AR_MAE,VAR_MAE,VECM_MAE,ARIMA_MAE,file = "MAE Results.Rdata")
+save(AR_Results,VAR_Results,VECM_Results,ARIMA_Results,file = "Forecast Results.Rdata")
+```
+---
+
+
+# References {-}
