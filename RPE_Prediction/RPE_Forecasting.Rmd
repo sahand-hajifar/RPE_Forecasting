@@ -14,6 +14,9 @@ author:
   - name: "Allison Jones-Farmer ^[Email: farmerl2@miamioh.edu | Phone: +1-513-529-4823 | Website: <a href=\"https://miamioh.edu/fsb/directory/?up=/directory/farmerl2\">Miami University Official</a> ]"
     affiliation: Farmer School of Business, Miami University
     
+  - name: "Ehsan Rashedi ^[Email: exreie@rit.edu | Phone: +1-585-475-7260 | Website: <a href=\"https://www.rit.edu/directory/exreie-ehsan-rashedi\">Rochester Institute of Technology Official</a> ]"
+    affiliation: Department of Industrial and Systems Engineering, Rochester Institute of Technology
+    
   - name: "Lora Cavuoto ^[Email: loracavu@buffalo.edu | Phone: +1-716-645-4696 | Website: <a href=\"http://engineering.buffalo.edu/industrial-systems/people/faculty-directory/cavuoto-lora.html\">University at Buffalo Official</a> ]"
     affiliation: Department of Industrial and Systems Engineering, University at Buffalo
     
@@ -68,12 +71,13 @@ knitr::opts_chunk$set(echo = TRUE,
 ---
 
 \newpage 
+# Lab Study 1
 
-# Introduction
-In this paper we attempt to show how the stride data in @baghdadi2018machine and @baghdadimonitoring can be used to do unconditional forecasting of Rated Perceived Exertion (RPE) using univariate and multivariate time series methods. RPE forecasting is an important concern because it can help ergonomists with fatigue-related ergonomic interventions. We have extracted the stride data for their 15 participants using the following [GitHub repository](https://github.com/fmegahed/fatigue-changepoint/tree/master/Data/Raw). The reader should notice that the data was preprocessed by normalizing the length of the time series by percentile and then denoising by median filter. 
+## Introduction
+In this section we attempt to show how the stride data in @baghdadi2018machine and @baghdadimonitoring can be used to do unconditional forecasting of Rated Perceived Exertion (RPE) using univariate and multivariate time series methods. RPE forecasting is an important concern because it can help ergonomists with fatigue-related ergonomic interventions. We have extracted the stride data for their 15 participants using the following [GitHub repository](https://github.com/fmegahed/fatigue-changepoint/tree/master/Data/Raw). The reader should notice that the data was preprocessed by normalizing the length of the time series by percentile and then denoising by median filter. 
 Since these are not a main goal of our research, we do not include the preprocessing part here, and we directly use the preprocessed data in @baghdadi2018machine and @baghdadimonitoring. Alternatively, the interested reader is adviced to see the supplementary Matlab files in their GitHub Repository in conjunction with this work.
 
-## R Initilization/Package Management 
+### R Initilization/Package Management 
 The code snippet below presents the **R** packages used in our analysis. Additionally, the reader should note that we have used R version 3.6.2 in our analysis. The analysis is performed on a 64-bit Windows Operating System, with Intel(R) Xeron(R) W-2145 CPU @ 3.70 GHz 3.70 GHz and 64.00 GB RAM.
 ```{r error=FALSE, warning=FALSE, cache=FALSE, load_libraries, message=FALSE}
 rm(list = ls()) # clear global environment
@@ -82,6 +86,7 @@ graphics.off() # close all graphics
 pacman::p_load(dplyr,forecast, knitr, R.matlab, tsDyn, ggplot2)
 ```
 
+### Data Extraction
 The stride data (stride length, stride height and stride duration) and RPE data are extracted from the mat files in @baghdadi2018machine and @baghdadimonitoring. The extracted data are multivariate time series with four variables (stride length, stride height, stride duration and RPE), and the length of the time series for each participant is 99 (from 1 percentile to 99 percentile). Different participants have the same time length, because walking time is rescaled from nominal time spent during walking to 0-100% scale (see @baghdadimonitoring for more details).  Moreover, notice that RPE is collected in a lower frequency compared to stride variables (6th,12th,...,96th percentiles) and its general changing pattern is nondecreasing. We use low-frequency observations which leaves us with 16 observations per participant. Please see the comments within the code chunk for more details.
 
 ```{r settings}
@@ -101,7 +106,7 @@ n_ahead_range = 1:6 #range of k in k-ahead forecasting
 comb = expand.grid(Sub_range,n_ahead_range) #different combinations of subject number and k (in k-ahead forecasting)
 
 column_names = sprintf("Subject%s/%s_ahead",comb[,1],comb[,2])
-AR_Results = ARIMA_Results = VAR_Results = VECM_Results = matrix(data=NA,nrow=LF_T_end,ncol=dim(comb)[1])
+AR_Results = ARIMA_Results = VAR_Results = VECM_Results = Naive_Results = matrix(data=NA,nrow=LF_T_end,ncol=dim(comb)[1])
 sub_names = sprintf("Participant %s",Sub_range)
 JoTest_res = matrix(data=NA,N_sub,2)
 rownames(JoTest_res) = sub_names
@@ -109,7 +114,7 @@ colnames(JoTest_res) = c("Cointegration Rank","p-value")
 ```
 
 ```{r extract}
-  HF_Subject_Data <- sprintf("../Data_Subject/Data_%s.mat",seq(1:N_sub))%>% #High-frequency subject data
+  HF_Subject_Data <- sprintf("../Case 1 Data/Data_%s.mat",seq(1:N_sub))%>% #High-frequency subject data
   lapply(readMat) %>%
   lapply(unlist) %>% 
   lapply(matrix, ncol = N_var, byrow = FALSE,dimnames = NULL) %>% 
@@ -119,20 +124,20 @@ colnames(JoTest_res) = c("Cointegration Rank","p-value")
   lapply(slice, seq(T_start,T_end,by=T_inc))
 ```
 
-## Information for Reproducing our Research
+### Information for Reproducing our Research
 
 ```{r reproduce}
     sInfo = sessionInfo()
     sInfo
 ```
 
-# Visualization {.tabset .tabset-fade .tabset-pills}
+## Visualization {.tabset .tabset-fade .tabset-pills}
 In this section, stride data (high-frequency) and RPE data (low-frequency) are illustrated.
-```{r raw_plotting,echo=TRUE, results='asis'}
+```{r case1_raw_plotting,echo=TRUE, results='asis'}
 for (num_subject in Sub_range)
 {
   Raw_Data<-ts(data = HF_Subject_Data[[num_subject]], start = 1, end = dim(HF_Subject_Data[[num_subject]])[1], frequency = 1, names =c("Stride Length (ft.)","Stride Height (ft.)","Stride Duration (s)","RPE") )
-  cat(paste0("## Participant ",num_subject, " {-} \n"))
+  cat(paste0("### Participant ",num_subject, " {-} \n"))
   Plot = autoplot(Raw_Data,facets = T)+geom_point(shape=1)+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
   print(Plot)
   cat("\n \n")
@@ -140,10 +145,10 @@ for (num_subject in Sub_range)
 
 ```
 
-# RPE Forecasting
+## RPE Forecasting
 In this section we do rolling forecasting for RPE. Suppose that we want to do a forecast at time $t$ (in the code we call this current time). If we do k-step ahead forecasting, we will get the forecast of RPE at time $t+k$. Implementing rolling forecast starts from $t=8$ and we analyze different values of $k$ $(k=1,..,6)$. In unconditional forecasting, the stride and RPE data are known for times ${1,2,..,t}$ and we want to forecast RPE at time $t+k$. Autoregressive (AR) model, autoregressive integrated moving average (ARIMA), vector autoregression (VAR) model and vector error correction model (VECM) are used for forecasting. Since the RPE scale is 6-20, in cases that an RPE higher than 20 is forecasted we change it to 20. In addition, due to limited number of observations (16 observations), obtaining a VAR model with a lag order higher than 1 is not possible. Therefore, to be consistent,we use AR(1), ARIMA(1,1,0), VAR(1) and Vector Error Correction Model without lagged differences.
 
-## AR Forecasting
+### AR Forecasting
 The equation for AR(1) model is as follows:
 $$y_t=\mu+\phi y_{t-1} +\epsilon_t,$$
 where $y_t$ represents a univariate time series (in our case it is RPE at time $t$), $\mu$ is an intercept, $\phi$ is a scalar coefficient, and $\epsilon_t$ is a white noise ($\epsilon_t$ is assumed to be uncorrelated random variables in which $E(\epsilon_t)=0$ and $Var(\epsilon_t)=\sigma^2$) and forecasting is done in a recursive procedure:
@@ -171,7 +176,7 @@ There are 16 observations and starting from $t=8$ RPE is continiously forecasted
 ```
 We get RPEs forecasted by AR for $t=9,10,...,16$.
 
-## ARIMA Forecasting
+### ARIMA Forecasting
 Fitting an ARIMA(1,1,0) model is euqivalent to fitting an AR(1) model to the first difference of $y_t$ ($\Delta y_t = y_t - y_{t-1}$). ARIMA(1,1,0) model is as follows:
 $$\Delta y_t=\phi \Delta y_{t-1}+\epsilon_t,$$
 then, the forecasting procedure should be done similar to AR.
@@ -193,7 +198,7 @@ then, the forecasting procedure should be done similar to AR.
 ```
 Now, we have RPEs forecasted by ARIMA for $t=9,10,...,16$.
 
-## VAR Forecasting
+### VAR Forecasting
 The equation for VAR model of order 1 is as follows:
 $$\mathbf{y}_t=\mathbf{\nu}+\mathbf{A} \mathbf{y}_{t-1}+\mathbf{u}_t,$$
 
@@ -225,7 +230,7 @@ In our case $N=4$ (there are four variables). As mentioned earlier, there are 16
 ```
 Now, we have RPEs forecasted by VAR for $t=9,10,...,16$.
 
-## VECM Forecasting
+### VECM Forecasting
 Vector Error Correction Model (VECM) without lagged differences is as follows:
 $$\Delta \mathbf{y}_t=\boldsymbol{\nu}+\boldsymbol{\Pi} \mathbf{y}_{t-1}+\mathbf{u}_t,$$
 Variables are defined as those in VAR model, $\boldsymbol{\nu}$ is an intercept and $\boldsymbol{\Pi}$ is a coefficient matrix. Continious forecasting is done in a recursive procedure as mentioned in the VAR model. tsDyn package (see @di2015package) is used to train VECM.
@@ -261,36 +266,54 @@ print(JoTest_res)
 ```
 We get RPEs forecasted by VECM for $t=9,10,...,16$.
 
-# RPE Forecasting Plots for Different Subjects {.tabset .tabset-fade .tabset-pills}
+### Naive Forecasting
+
+```{r Naive}
+    Naive_Forecast <- function(num_subject,n_ahead) 
+    {Naive_RPE <- matrix(data = NA,nrow = LF_T_end,ncol = 1)
+      for (cur_t in LF_F_start:(LF_T_end-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        Naive_RPE[cur_t+n_ahead,] = Data_in[cur_t,N_var]
+      }, error = function(e) {})}
+    return(Naive_RPE)}
+
+    Naive_Results = mapply(Naive_Forecast,comb[,1],comb[,2])
+    colnames(Naive_Results) =  column_names
+```
+
+## RPE Forecasting Plots for Different Subjects {.tabset .tabset-fade .tabset-pills}
 In this section, we plot the forecasts that we got using different methods in conjunction with true RPEs. These plots are presented for different participants and $k$ values.
 
-```{r subject_plotting,echo=TRUE, results='asis',fig.height = 10, fig.width = 8}
+```{r case1_forecast_plot,echo=TRUE, results='asis',fig.height = 10, fig.width = 8}
 for (num_subject in Sub_range)
 {
-  cat(paste0("## Participant ",num_subject, " {-} \n"))
+  cat(paste0("### Participant ",num_subject, " {-} \n"))
   
-  F_Data = matrix(data = NA,nrow = LF_T_end*5*length(n_ahead_range),ncol = 4)
+  F_Data = matrix(data = NA,nrow = LF_T_end*6*length(n_ahead_range),ncol = 4)
   colnames(F_Data) = c("RPE","Time","k","Method")
   AR = AR_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
   VAR = VAR_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
   VECM = VECM_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
   ARIMA = ARIMA_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  Naive = Naive_Results[,seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
   True =  matrix(rep(Subject_Data[[num_subject]][,4],each=length(n_ahead_range)), ncol=length(n_ahead_range), byrow=TRUE)
-  F_Data[,1] = c(as.vector(AR),as.vector(VAR),as.vector(VECM),as.vector(ARIMA),as.vector(True))
+  F_Data[,1] = c(as.vector(AR),as.vector(VAR),as.vector(VECM),as.vector(ARIMA),as.vector(Naive),as.vector(True))
   F_Data[,2] = rep(1:LF_T_end,(dim(F_Data)[1])/LF_T_end)
-  F_Data[,3] = rep(c(rep("1-step ahead",LF_T_end),rep("2-step ahead",LF_T_end),rep("3-step ahead",LF_T_end),rep("4-step ahead",LF_T_end),rep("5-step ahead",LF_T_end),rep("6-step ahead",LF_T_end)),5)
-F_Data[,4] = c(rep("AR",length(n_ahead_range)*LF_T_end),rep("VAR",length(n_ahead_range)*LF_T_end),rep("VECM",length(n_ahead_range)*LF_T_end),rep("ARIMA",length(n_ahead_range)*LF_T_end),rep("True RPE",length(n_ahead_range)*LF_T_end))
+  F_Data[,3] = rep(c(rep("1-step ahead",LF_T_end),rep("2-step ahead",LF_T_end),rep("3-step ahead",LF_T_end),rep("4-step ahead",LF_T_end),rep("5-step ahead",LF_T_end),rep("6-step ahead",LF_T_end)),6)
+F_Data[,4] = c(rep("AR",length(n_ahead_range)*LF_T_end),rep("VAR",length(n_ahead_range)*LF_T_end),rep("VECM",length(n_ahead_range)*LF_T_end),rep("ARIMA",length(n_ahead_range)*LF_T_end),rep("Naive",length(n_ahead_range)*LF_T_end),rep("True RPE",length(n_ahead_range)*LF_T_end))
   F_Data2 = as.data.frame(F_Data,colnames=T)
   F_Data2$RPE = as.numeric(as.character(F_Data2$RPE))
   F_Data2$Time = as.numeric(as.character(F_Data2$Time))
   
- p = ggplot(data = F_Data2, mapping = aes(x = Time,y = RPE, color = Method))+scale_colour_manual(values = c("purple", "blue", "darkgrey","darkorange4","red"))+geom_line(aes(linetype = Method),size = 0.5)+scale_linetype_manual(values=c("twodash","longdash", "solid","dashed","dotdash"))+facet_wrap(vars(k))+ylim(6,20)+geom_point(aes(shape = Method),size = 1.5)+scale_shape_manual(values=c(1,3,20,4,8))+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5),legend.position="top")
+ p = ggplot(data = F_Data2, mapping = aes(x = Time,y = RPE, color = Method))+scale_colour_manual(values = c("purple", "blue","orange", "darkgrey","darkorange4","red"))+geom_line(aes(linetype = Method),size = 0.5)+scale_linetype_manual(values=c("twodash","longdash","dotted", "solid","dashed","dotdash"))+facet_wrap(vars(k))+ylim(6,20)+geom_point(aes(shape = Method),size = 1.5)+scale_shape_manual(values=c(1,3,0,20,4,8))+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5),legend.position="top")
  print(p)
   cat("\n \n")
 }
 ```
 
-# MAE Results
+## MAE Results
 We compare the performance of different methods based on MAE box-plots and bar plots. We exclude Participant 2 and Participant 6 in the summary here, because in a few cases AR and VAR are not able to give prediction for these participants (one reason is that RPE of Participant 6 does not change from $t=1$ to $t=8$ and the reason for excluding Participant 2 is that the autoregressive coefficients could not be reliably estimated due to nonstationarity). 
 
 ```{r MAE_tables}
@@ -307,53 +330,359 @@ VECM_abs_error = abs(Rep_True_RPE-VECM_Results)
 VECM_MAE = matrix(data = colMeans(VECM_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
 ARIMA_abs_error = abs(Rep_True_RPE-ARIMA_Results)
 ARIMA_MAE = matrix(data = colMeans(ARIMA_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+Naive_abs_error = abs(Rep_True_RPE-Naive_Results)
+Naive_MAE = matrix(data = colMeans(Naive_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
 
-AR_MAE[,2] = VAR_MAE[,2] = VECM_MAE[,2] = ARIMA_MAE[,2] = NA #exclude subject 2 from results
-AR_MAE[,6] = VAR_MAE[,6] = VECM_MAE[,6] = ARIMA_MAE[,6] = NA #exclude subject 6 from results
+AR_MAE[,2] = VAR_MAE[,2] = VECM_MAE[,2] = ARIMA_MAE[,2] = Naive_MAE[,2] = NA #exclude subject 2 from results
+AR_MAE[,6] = VAR_MAE[,6] = VECM_MAE[,6] = ARIMA_MAE[,6] = Naive_MAE[,6] = NA #exclude subject 6 from results
 
 rownames(AR_MAE) = rownames(VAR_MAE) = rownames(VECM_MAE) = rownames(ARIMA_MAE) = sprintf("%s_ahead",n_ahead_range)
 colnames(AR_MAE) = colnames(VAR_MAE) = colnames(VECM_MAE) = colnames(ARIMA_MAE) = sprintf("Subject %s",Sub_range)
 ```
-## MAE Box-plots {.tabset .tabset-fade .tabset-pills}
+### MAE Box-plots {.tabset .tabset-fade .tabset-pills}
 ```{r boxplot,echo=TRUE, results='asis'}
 for (n_ahead in n_ahead_range) {
-  cat(paste0("### ",n_ahead,"-ahead", " {-} \n"))
-  MAE <- c(AR_MAE[n_ahead,],VAR_MAE[n_ahead,],VECM_MAE[n_ahead,],ARIMA_MAE[n_ahead,])
-  Method <- c(rep("AR",N_sub),rep("VAR",N_sub),rep("VECM",N_sub),rep("ARIMA",N_sub))
+  cat(paste0("#### ",n_ahead,"-ahead", " {-} \n"))
+  MAE <- c(AR_MAE[n_ahead,],VAR_MAE[n_ahead,],VECM_MAE[n_ahead,],ARIMA_MAE[n_ahead,],Naive_MAE[n_ahead,])
+  Method <- c(rep("AR",N_sub),rep("VAR",N_sub),rep("VECM",N_sub),rep("ARIMA",N_sub),rep("Naive",N_sub))
   df = data.frame(MAE,Method)
   p <- ggplot(df, aes(x = Method, y = MAE))+geom_boxplot()+ggtitle(paste0(toString(n_ahead),"-step ahead"))+ theme(plot.title = element_text(hjust = 0.5))+theme_bw()+ theme(plot.title = element_text(hjust = 0.5))+ylim(0,5)
   print(p)
   cat("\n \n")
 }
 ```
-## MAE Bar-plots {.tabset .tabset-fade .tabset-pills}
+### MAE Bar-plots {.tabset .tabset-fade .tabset-pills}
 ```{r barplot,echo=TRUE, results='asis'}
 final_sub_range = c(1,3,4,5,7,8,9,10,11,12,13,14,15)
 for (num_subject in final_sub_range) {
-cat(paste0("### Participant ",num_subject, " {-} \n"))
-df = data.frame(MAE = c(AR_MAE[,num_subject],VAR_MAE[,num_subject],VECM_MAE[,num_subject],ARIMA_MAE[,num_subject]),k_step_ahead = rep(sprintf("%s_step ahead",n_ahead_range),4),Method = c(rep("AR",length(n_ahead_range)),rep("VAR",length(n_ahead_range)),rep("VECM",length(n_ahead_range)),rep("ARIMA",length(n_ahead_range))))
+cat(paste0("#### Participant ",num_subject, " {-} \n"))
+df = data.frame(MAE = c(AR_MAE[,num_subject],VAR_MAE[,num_subject],VECM_MAE[,num_subject],ARIMA_MAE[,num_subject],Naive_MAE[,num_subject]),k_step_ahead = rep(sprintf("%s_step ahead",n_ahead_range),5),Method = c(rep("AR",length(n_ahead_range)),rep("VAR",length(n_ahead_range)),rep("VECM",length(n_ahead_range)),rep("ARIMA",length(n_ahead_range)),rep("Naive",length(n_ahead_range))))
 p = ggplot(df, aes(Method, MAE)) + geom_col() + facet_wrap(~k_step_ahead,scales = "free")+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
 print(p)
   cat("\n \n")
 }
 ```
-# Overall MAE Results
+## Overall MAE Results
 In this section, we get the median MAE for different participants.
 ```{r overall_MAE}
 AR_Overall = apply(AR_MAE[,c(-2,-6)],1,median)
 ARIMA_Overall = apply(ARIMA_MAE[,c(-2,-6)],1,median)
 VAR_Overall = apply(VAR_MAE[,c(-2,-6)],1,median)
 VECM_Overall = apply(VECM_MAE[,c(-2,-6)],1,median)
-Overall_MAE = rbind(AR_Overall,ARIMA_Overall,VAR_Overall,VECM_Overall)
+Naive_Overall = apply(Naive_MAE[,c(-2,-6)],1,median)
+Overall_MAE = rbind(AR_Overall,ARIMA_Overall,Naive_Overall,VAR_Overall,VECM_Overall)
 print(Overall_MAE)
 ```
-# Save the Results
+## Save the Results
 This code-chunk saves the Johansent Test, MAE and forecast results.
 ```{r save_results}
-save(AR_MAE,VAR_MAE,VECM_MAE,ARIMA_MAE,file = "MAE Results.Rdata")
-save(Overall_MAE,file = "Overall MAE.Rdata")
-save(AR_Results,VAR_Results,VECM_Results,ARIMA_Results,file = "Forecast Results.Rdata")
-save(Jotest_Sub_1,Jotest_Sub_2,Jotest_Sub_3,Jotest_Sub_4,Jotest_Sub_5,Jotest_Sub_6,Jotest_Sub_7,Jotest_Sub_8,Jotest_Sub_9,Jotest_Sub_10,Jotest_Sub_11,Jotest_Sub_12,Jotest_Sub_13,Jotest_Sub_14,Jotest_Sub_15,file = "Jotest_Results.Rdata")
+save(AR_MAE,VAR_MAE,VECM_MAE,ARIMA_MAE,Naive_MAE,file = "../Case 1 Results/MAE Results.Rdata")
+save(Overall_MAE,file = "../Case 1 Results/Overall MAE.Rdata")
+save(AR_Results,VAR_Results,VECM_Results,ARIMA_Results,file = "../Case 1 Results/Forecast Results.Rdata")
+save(Jotest_Sub_1,Jotest_Sub_2,Jotest_Sub_3,Jotest_Sub_4,Jotest_Sub_5,Jotest_Sub_6,Jotest_Sub_7,Jotest_Sub_8,Jotest_Sub_9,Jotest_Sub_10,Jotest_Sub_11,Jotest_Sub_12,Jotest_Sub_13,Jotest_Sub_14,Jotest_Sub_15,file = "../Case 1 Results/Jotest_Results.Rdata")
+rm(list = ls())
+```
+
+# Lab Study 2
+In this section, in order to address the broader issue of generalizability of the models for other datasets and applications, we have included the implementation of the method on the dataset collected as described in @karvekar2019smartphone. The means of inducing fatigue was different for this new study, however the studies were similar in the use of a single leg-mounted sensor to capture gait parameters and the RPE to capture subjective fatigue. For Lab Study 2, there were 24 participants (larger than the 15 in the original dataset (Lab Study 1)), and the number of data points per participant ranged from 13 to 38 (median of 20.5, on average larger than the 16 for Lab Study 1). In Lab Study 2, the gait parameters used for modeling were mean acceleration, maximum acceleration, stride duration, and RPE (2 parameters that were the same as Lab Study 1).
+
+## Data Extraction
+In Lab Study 2, there was one RPE value reported for each period of squatting exercise.
+Therefore, we have chosen to extract the stride parameters values related to the last stride for each walking
+period.
+
+```{r settings2a}
+N_sub = 24 #number of subjects
+N_var = 4 #number of variables
+Sub_range = 1:N_sub #range of subjects
+lag_order = 1
+n_ahead_range = 1:6 #range of k in k-ahead forecasting
+arima_dif = 1
+```
+
+```{r extract2}
+last_row_group = function(x) #this function gets the last row (features related to last stride) in each trial
+{
+temp = x%>%
+  group_by(X1) %>%
+  slice(rows = n()) %>%
+  ungroup()
+temp = temp[complete.cases(temp),]
+return(temp)
+}
+
+Total_Subject_Data <- sprintf("../Case 2 Data/ID%sGaitFeatures.mat",seq(1:N_sub))%>% 
+lapply(readMat) %>%
+lapply(unlist) %>% 
+lapply(matrix, ncol = N_var+1, byrow = FALSE,dimnames = NULL) %>% 
+lapply(data.frame)
+  
+Subject_Data = Total_Subject_Data%>% 
+lapply(last_row_group)%>%
+lapply(function(x) { x["X1"] <- NULL; x })%>%
+lapply(function(x) { x = x[c(2,3,4,1)]; x })%>%
+lapply(function(x) {colnames(x) = c("Mean Acc", "Max Acc", "Stride Duration", "RPE"); x})
+
+```
+
+## Visualization {.tabset .tabset-fade .tabset-pills}
+In this section, stride data (mean acceleration, maximum acceleration and stride duration) and RPE data are illustrated.
+```{r case2_raw_plotting,echo=TRUE, results='asis'}
+for (num_subject in Sub_range)
+{
+  Raw_Data<-ts(data = Subject_Data[[num_subject]], start = 1, end = dim(Subject_Data[[num_subject]])[1], frequency = 1, names =c("Mean Acceleation","Maximum Acceleation","Stride Duration","RPE") )
+  cat(paste0("### Participant ",num_subject, " {-} \n"))
+  Plot = autoplot(Raw_Data,facets = T)+geom_point(shape=1)+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
+  print(Plot)
+  cat("\n \n")
+}
+
+```
+
+## RPE Forecasting
+
+```{r settings2b}
+comb = expand.grid(Sub_range,n_ahead_range) #different combinations of subject number and k (in k-ahead forecasting)
+AR_Results = ARIMA_Results = VAR_Results = VECM_Results = Naive_Results = matrix(data=NA,nrow=max(unlist(lapply(Subject_Data, function(x) {temp = dim(x)[1]; temp}))),ncol=dim(comb)[1])
+column_names = sprintf("Subject%s/%s_ahead",comb[,1],comb[,2])
+
+sub_names = sprintf("Participant %s",Sub_range)
+JoTest_res = matrix(data=NA,N_sub,2)
+rownames(JoTest_res) = sub_names
+colnames(JoTest_res) = c("Cointegration Rank","p-value")
+```
+
+### AR Forecasting
+```{r AR2}
+    AR_Forecast <- function(num_subject,n_ahead) #this function uses AR(1) to do k-ahead forecasting for a subject
+    {AR_RPE <- matrix(data = NA,nrow = dim(Subject_Data[[num_subject]])[1],ncol = 1)
+      for (cur_t in ceiling(dim(Subject_Data[[num_subject]])[1]/2):(dim(Subject_Data[[num_subject]])[1]-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_ar <- arima(Data_in[,N_var],order = c(lag_order, 0, 0))
+        AR_RPE[cur_t+n_ahead,] = predict(mod_ar,n.ahead = n_ahead)[["pred"]][n_ahead]
+      }, error = function(e) {})}
+    return(AR_RPE)}
+
+    AR_Results_Temp = mapply(AR_Forecast,comb[,1],comb[,2])
+    for (i in 1:dim(AR_Results)[2])
+    {
+      AR_Results[1:dim(AR_Results_Temp[[i]])[1],i] = AR_Results_Temp[[i]]
+    }
+    AR_Results [AR_Results>20] <- 20
+    colnames(AR_Results) =  column_names
+```
+
+### ARIMA Forecasting
+
+```{r ARIMA2}
+    ARIMA_Forecast <- function(num_subject,n_ahead) #this function uses ARIMA(1,1,0) to do k-ahead forecasting for a subject
+    {ARIMA_RPE <- matrix(data = NA,nrow = dim(Subject_Data[[num_subject]])[1],ncol = 1)
+      for (cur_t in ceiling(dim(Subject_Data[[num_subject]])[1]/2):(dim(Subject_Data[[num_subject]])[1]-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_arima <- arima(Data_in[,N_var],order = c(lag_order, arima_dif, 0))
+        ARIMA_RPE[cur_t+n_ahead,] = predict(mod_arima,n.ahead = n_ahead)[["pred"]][n_ahead]
+      }, error = function(e) {})}
+    return(ARIMA_RPE)}
+
+    ARIMA_Results_Temp = mapply(ARIMA_Forecast,comb[,1],comb[,2])
+    for (i in 1:dim(ARIMA_Results)[2])
+    {
+      ARIMA_Results[1:dim(ARIMA_Results_Temp[[i]])[1],i] = ARIMA_Results_Temp[[i]]
+    }
+    ARIMA_Results [ARIMA_Results>20] <- 20
+    colnames(ARIMA_Results) =  column_names
+```
+
+### VAR Forecasting
+
+```{r VAR2}
+    VAR_Forecast <- function(num_subject,n_ahead) #this function uses VAR(1) to do k-ahead forecasting for a subject
+    { VAR_RPE <- matrix(data = NA,nrow = dim(Subject_Data[[num_subject]])[1],ncol = 1)
+    for (cur_t in ceiling(dim(Subject_Data[[num_subject]])[1]/2):(dim(Subject_Data[[num_subject]])[1]-n_ahead)){ 
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,] #Data_in is used to extract model
+        mod_var <- lineVar(Data_in, lag=lag_order) #extracting VAR(1) model
+        VAR_RPE[cur_t+n_ahead,]<- predict(mod_var,n.ahead = n_ahead)[n_ahead,N_var] #rolling forecasting
+      }, error = function(e) {})}
+    return(VAR_RPE)
+    }
+   VAR_Results_Temp = mapply(VAR_Forecast,comb[,1],comb[,2])
+   for (i in 1:dim(VAR_Results)[2])
+    {
+      VAR_Results[1:dim(VAR_Results_Temp[[i]])[1],i] = VAR_Results_Temp[[i]]
+    }
+   VAR_Results [VAR_Results>20] <- 20
+   colnames(VAR_Results) =  column_names
+```
+
+### VECM Forecasting
+
+```{r jotest2}
+for(num_subject in Sub_range)
+  {
+  mod_vecm <- VECM(Subject_Data[[num_subject]], lag = lag_order-1, estim="ML")
+  Rank <- rank.test(mod_vecm, type="trace")
+  JoTest_res[num_subject,1] = Rank[["r"]]
+  JoTest_res[num_subject,2] = Rank[["pval"]]
+  name <- paste("Jotest_Sub", num_subject, sep = "_")
+  assign(name, Rank)
+}
+print(JoTest_res)
+```
+
+```{r VECM2}
+    VECM_Forecast <- function(num_subject,n_ahead) #this function uses VECM to do k-ahead forecasting for a subject
+    {VECM_RPE <- matrix(data = NA,nrow = dim(Subject_Data[[num_subject]])[1],ncol = 1)
+    for (cur_t in ceiling(dim(Subject_Data[[num_subject]])[1]/2):(dim(Subject_Data[[num_subject]])[1]-n_ahead)){
+      tryCatch({
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- DataX[1:cur_t,]
+        mod_vecm <- VECM(Data_in, lag = lag_order-1)
+        VECM_RPE[cur_t+n_ahead,] <- predict(mod_vecm,n.ahead = n_ahead)[n_ahead,N_var]
+      }, error = function(e) {})}
+    return(VECM_RPE)
+    }
+    VECM_Results_Temp = mapply(VECM_Forecast,comb[,1],comb[,2])
+    for (i in 1:dim(VECM_Results)[2])
+    {
+      VECM_Results[1:dim(VECM_Results_Temp[[i]])[1],i] = VECM_Results_Temp[[i]]
+    }
+    VECM_Results [VECM_Results>20] <- 20
+    colnames(VECM_Results) =  column_names
+```
+
+### Naive Forecasting
+
+```{r Naive2}
+    Naive_Forecast <- function(num_subject,n_ahead) 
+    {Naive_RPE <- matrix(data = NA,nrow = dim(Subject_Data[[num_subject]])[1],ncol = 1)
+      for (cur_t in ceiling(dim(Subject_Data[[num_subject]])[1]/2):(dim(Subject_Data[[num_subject]])[1]-n_ahead)){
+        DataX <- Subject_Data[[num_subject]]
+        Data_in <- as.matrix(DataX[1:cur_t,])
+        Naive_RPE[cur_t+n_ahead,] = Data_in[cur_t,N_var]
+      }
+    return(Naive_RPE)}
+
+    Naive_Results_Temp = mapply(Naive_Forecast,comb[,1],comb[,2])
+    for (i in 1:dim(Naive_Results)[2])
+    {
+      Naive_Results[1:dim(Naive_Results_Temp[[i]])[1],i] = Naive_Results_Temp[[i]]
+    }
+    
+    colnames(Naive_Results) =  column_names
+```
+
+## RPE Forecasting Plots for Different Subjects {.tabset .tabset-fade .tabset-pills}
+In this section, we plot the forecasts that we got using different methods in conjunction with true RPEs. These plots are presented for different participants and $k$ values.
+
+```{r case2_forecast_plot,echo=TRUE, results='asis',fig.height = 10, fig.width = 8}
+for (num_subject in Sub_range)
+{
+  cat(paste0("### Participant ",num_subject, " {-} \n"))
+  
+  F_Data = matrix(data = NA,nrow = (dim(Subject_Data[[num_subject]])[1])*6*length(n_ahead_range),ncol = 4)
+  colnames(F_Data) = c("RPE","Time","k","Method")
+  AR = AR_Results[1:dim(Subject_Data[[num_subject]])[1],seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  VAR = VAR_Results[1:dim(Subject_Data[[num_subject]])[1],seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  VECM = VECM_Results[1:dim(Subject_Data[[num_subject]])[1],seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  ARIMA = ARIMA_Results[1:dim(Subject_Data[[num_subject]])[1],seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  Naive = Naive_Results[1:dim(Subject_Data[[num_subject]])[1],seq(num_subject,length(n_ahead_range)*N_sub,by=N_sub)]
+  True =  matrix(unlist(rep(Subject_Data[[num_subject]][,4],each=length(n_ahead_range))), ncol=length(n_ahead_range), byrow=F)
+  #True = rbind(True, matrix(data = NA, ncol = dim(True)[2], nrow = dim(AR)[1]-dim(True)[1]))
+  F_Data[,1] = c(as.vector(AR),as.vector(VAR),as.vector(VECM),as.vector(ARIMA),as.vector(Naive),as.vector(True))
+  F_Data[,2] = rep(1:dim(AR)[1],(dim(F_Data)[1])/dim(AR)[1])
+  F_Data[,3] = rep(c(rep("1-step ahead",dim(AR)[1]),rep("2-step ahead",dim(AR)[1]),rep("3-step ahead",dim(AR)[1]),rep("4-step ahead",dim(AR)[1]),rep("5-step ahead",dim(AR)[1]),rep("6-step ahead",dim(AR)[1])),6)
+F_Data[,4] = c(rep("AR",length(n_ahead_range)*dim(AR)[1]),rep("VAR",length(n_ahead_range)*dim(AR)[1]),rep("VECM",length(n_ahead_range)*dim(AR)[1]),rep("ARIMA",length(n_ahead_range)*dim(AR)[1]),rep("Naive",length(n_ahead_range)*dim(AR)[1]),rep("True RPE",length(n_ahead_range)*dim(AR)[1]))
+  F_Data2 = as.data.frame(F_Data,colnames=T)
+  F_Data2$RPE = as.numeric(as.character(F_Data2$RPE))
+  F_Data2$Time = as.numeric(as.character(F_Data2$Time))
+  
+ p = ggplot(data = F_Data2, mapping = aes(x = Time,y = RPE, color = Method))+scale_colour_manual(values = c("purple", "blue","orange","darkgrey","darkorange4","red"))+geom_line(aes(linetype = Method),size = 0.5)+scale_linetype_manual(values=c("twodash","longdash","dotted", "solid","dashed","dotdash"))+facet_wrap(vars(k))+ylim(6,20)+geom_point(aes(shape = Method),size = 1.5)+scale_shape_manual(values=c(1,3,0,20,4,8))+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5),legend.position="top")
+ print(p)
+  cat("\n \n")
+}
+```
+
+## MAE Results
+
+```{r MAE_tables2}
+Subject_Data2 = vector(mode = "list", length = length(Subject_Data))
+for (i in 1:length(Subject_Data))
+{
+ Subject_Data2[[i]] = rbind(data.matrix(Subject_Data[[i]]), matrix(data = NA, ncol = dim(Subject_Data[[i]])[2], nrow = dim(AR_Results)[1]-dim(Subject_Data[[i]])[1])) 
+}
+
+Comb_Subject_Data = do.call(cbind, Subject_Data2)
+True_RPE = Comb_Subject_Data [,seq(N_var,N_var*N_sub,N_var)]
+colnames(True_RPE) = sprintf("Subject %s",1:N_sub)
+Rep_True_RPE = do.call(cbind, replicate(length(n_ahead_range), True_RPE, simplify=FALSE))
+
+AR_abs_error = abs(Rep_True_RPE-AR_Results)
+AR_MAE = matrix(data = colMeans(AR_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+VAR_abs_error = abs(Rep_True_RPE-VAR_Results)
+VAR_MAE = matrix(data = colMeans(VAR_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+VECM_abs_error = abs(Rep_True_RPE-VECM_Results)
+VECM_MAE = matrix(data = colMeans(VECM_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+ARIMA_abs_error = abs(Rep_True_RPE-ARIMA_Results)
+ARIMA_MAE = matrix(data = colMeans(ARIMA_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+Naive_abs_error = abs(Rep_True_RPE-Naive_Results)
+Naive_MAE = matrix(data = colMeans(Naive_abs_error,na.rm=TRUE),nrow = length(n_ahead_range),byrow = T)
+
+
+rownames(AR_MAE) = rownames(VAR_MAE) = rownames(VECM_MAE) = rownames(ARIMA_MAE) = rownames(Naive_MAE) = sprintf("%s_ahead",n_ahead_range)
+colnames(AR_MAE) = colnames(VAR_MAE) = colnames(VECM_MAE) = colnames(ARIMA_MAE) = colnames(Naive_MAE) = sprintf("Subject %s",Sub_range)
+
+AR_MAE[,5] = VAR_MAE[,5] = VECM_MAE[,5] = ARIMA_MAE[,5] = Naive_MAE[,5] = NA #exclude subject 5 from results
+```
+
+### MAE Box-plots {.tabset .tabset-fade .tabset-pills}
+```{r boxplot2,echo=TRUE, results='asis'}
+for (n_ahead in n_ahead_range) {
+  cat(paste0("#### ",n_ahead,"-ahead", " {-} \n"))
+  MAE <- c(AR_MAE[n_ahead,],VAR_MAE[n_ahead,],VECM_MAE[n_ahead,],ARIMA_MAE[n_ahead,],Naive_MAE[n_ahead,])
+  Method <- c(rep("AR",N_sub),rep("VAR",N_sub),rep("VECM",N_sub),rep("ARIMA",N_sub),rep("Naive",N_sub))
+  df = data.frame(MAE,Method)
+  p <- ggplot(df, aes(x = Method, y = MAE))+geom_boxplot()+ggtitle(paste0(toString(n_ahead),"-step ahead"))+ theme(plot.title = element_text(hjust = 0.5))+theme_bw()+ theme(plot.title = element_text(hjust = 0.5))+ylim(0,7.5)
+  print(p)
+  cat("\n \n")
+}
+```
+### MAE Bar-plots2 {.tabset .tabset-fade .tabset-pills}
+```{r barplot2,echo=TRUE, results='asis'}
+final_sub_range = Sub_range
+for (num_subject in final_sub_range) {
+cat(paste0("#### Participant ",num_subject, " {-} \n"))
+df = data.frame(MAE = c(AR_MAE[,num_subject],VAR_MAE[,num_subject],VECM_MAE[,num_subject],ARIMA_MAE[,num_subject],Naive_MAE[,num_subject]),k_step_ahead = rep(sprintf("%s_step ahead",n_ahead_range),5),Method = c(rep("AR",length(n_ahead_range)),rep("VAR",length(n_ahead_range)),rep("VECM",length(n_ahead_range)),rep("ARIMA",length(n_ahead_range)),rep("Naive",length(n_ahead_range))))
+p = ggplot(df, aes(Method, MAE)) + geom_col() + facet_wrap(~k_step_ahead,scales = "free")+theme_bw()+ ggtitle(paste0("Participant ",toString(num_subject)))+ theme(plot.title = element_text(hjust = 0.5))
+print(p)
+  cat("\n \n")
+}
+```
+## Overall MAE Results
+In this section, we get the median MAE for different participants.
+```{r overall_MAE2}
+AR_Overall = apply(AR_MAE[,c(-5)],1,median)
+ARIMA_Overall = apply(ARIMA_MAE[,c(-5)],1,median)
+VAR_Overall = apply(VAR_MAE[,c(-5)],1,median)
+VECM_Overall = apply(VECM_MAE[,c(-5)],1,median)
+Naive_Overall = apply(Naive_MAE[,c(-5)],1,median)
+Overall_MAE = rbind(AR_Overall,ARIMA_Overall,VAR_Overall,VECM_Overall,Naive_Overall)
+print(Overall_MAE)
+```
+
+## Save the Results
+This code-chunk saves the Johansent Test, MAE and forecast results.
+```{r save_results2}
+save(AR_MAE,VAR_MAE,VECM_MAE,ARIMA_MAE,Naive_MAE,file = "../Case 2 Results/MAE Results.Rdata")
+save(Overall_MAE,file = "../Case 2 Results/Overall MAE.Rdata")
+save(AR_Results,VAR_Results,VECM_Results,ARIMA_Results,Naive_Results,file = "../Case 2 Results/Forecast Results.Rdata")
+save(Jotest_Sub_1,Jotest_Sub_2,Jotest_Sub_3,Jotest_Sub_4,Jotest_Sub_5,Jotest_Sub_6,Jotest_Sub_7,Jotest_Sub_8,Jotest_Sub_9,Jotest_Sub_10,Jotest_Sub_11,Jotest_Sub_12,Jotest_Sub_13,Jotest_Sub_14,Jotest_Sub_15,Jotest_Sub_16,Jotest_Sub_17,Jotest_Sub_18,Jotest_Sub_19,Jotest_Sub_20,Jotest_Sub_21,Jotest_Sub_22,Jotest_Sub_23,Jotest_Sub_24,file = "../Case 2 Results/Jotest_Results.Rdata")
+rm(list = ls())
 ```
 ---
 
